@@ -6,8 +6,7 @@ from datasets import Dataset, load_dataset, Value, ClassLabel
 import pandas as pd
 import torch
 from torch.utils.data.dataloader import DataLoader
-from sklearn.metrics import classification_report, f1_score
-
+from sklearn.metrics import classification_report, f1_score, accuracy_score
 
 # normalization is now done through Java, as the Python version of the Zemberek library is too slow and memory-intensive
 # processed_test and processed_training are the outputs of the Java program's normalization
@@ -38,6 +37,13 @@ from sklearn.metrics import classification_report, f1_score
 #         normalized += normalizer.normalize(detweetify(sentence))
 #
 #     return normalized
+
+device = torch.device('cuda')
+batch_size = 64
+test_size = 0.1
+lr = 1e-5
+max_length = 64
+epochs = 3
 
 
 def parse(file_location: str):
@@ -70,37 +76,61 @@ def tokenize(row):
 
 def train(training: Dataset):
     print("Splitting files into training and dev...")
-    dataset = training.train_test_split(test_size=0.1)
+    dataset = training.train_test_split(test_size=test_size)
+
     print("Tokenizing...")
     dataset['train'] = dataset['train'].map(tokenize, batched=True)
+    dataset['test'] = dataset['test'].map(tokenize, batched=True)
+
     print("Constructing DataLoader...")
     dataset['train'].set_format(type='torch', columns=['input_ids', 'token_type_ids', 'attention_mask', 'labels'])
-    dataloader = DataLoader(dataset['train'], batch_size=16)
+    dataset['test'].set_format(type='torch', columns=['input_ids', 'token_type_ids', 'attention_mask', 'labels'])
+
+    dataloader = dict()
+    dataloader['train'] = DataLoader(dataset['train'], batch_size=batch_size)
+    dataloader['test'] = DataLoader(dataset['test'], batch_size=batch_size)
 
     print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
     print("|            Begin Training             |")
     print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
 
-    model.train().to(torch.device('cuda'))
-    optimizer = AdamW(params=model.parameters(), lr=1e-5)
+    optimizer = AdamW(params=model.parameters(), lr=lr)
+    for epoch in range(epochs):
+        model.train().to(device)
+        print(f"\n\nEpoch {epoch + 1}...")
+        for i, batch in enumerate(tqdm(dataloader['train'])):
+            batch = {k: v.to(device) for k, v in batch.items()}
+            loss, y_pred = model(**batch)
+            loss.backward()
+            optimizer.step()
+            model.zero_grad()
+            # optimizer.zero_grad()
 
-    for i, batch in enumerate(tqdm(dataloader)):
-        batch = {k: v.to(torch.device('cuda')) for k, v in batch.items()}
-        outputs = model(**batch)
-        loss = outputs[0]
-        loss.backward()
-        optimizer.step()
-        optimizer.zero_grad()
-        if i % 10:
-            print(f"loss: {loss}")
+            # if i % 50:
+            #     print(f"loss: {loss}")
 
+        print("Evaluating...")
+        evaluate(dataloader['test'])
     return model
 
 
-# def evaluate(test: Dataset, model):
+def evaluate(dataloader: DataLoader):
+    model.eval().to(device)
+
+    test_acc = 0.0
+    test_f1 = 0.0
+    for i, batch in enumerate(tqdm(dataloader)):
+        batch = {k: v.to(device) for k, v in batch.items()}
+        y_pred = model(**batch)[1]
+        y_pred = torch.argmax(y_pred, dim=-1)
+        model.zero_grad()
+
+        test_acc += accuracy_score(batch['labels'].cpu().detach().numpy(), y_pred.cpu().detach().numpy())
+        test_f1 += f1_score(batch['labels'].cpu().detach().numpy(), y_pred.cpu().detach().numpy(), average='weighted')
+    print(f"Accuracy: {test_acc} F1-Score: {test_f1}")
 
 
 if __name__ == "__main__":
-    training_set = parse('../lib/training.tsv')
-    train(training_set)
+    training_set = parse('../lib/processed_training.tsv')
+    torch.save(train(training_set).state_dict(), "../model.pt")
     sys.exit()
