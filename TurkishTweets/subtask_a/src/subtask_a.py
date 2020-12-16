@@ -140,7 +140,7 @@ def evaluate(dataset: Dataset):
         y_preds += list(np.argmax(logits.detach().cpu().numpy(), axis=1).flatten())
         model.zero_grad()
 
-    print(classification_report(dataset['labels'], y_preds, digits=4))
+    print(classification_report(dataset['labels'], y_preds))
     return f1_score(dataset['labels'], y_preds, average='macro')
 
 
