@@ -9,7 +9,7 @@ import pandas as pd
 import torch
 import numpy as np
 from torch.utils.data.dataloader import DataLoader
-from sklearn.metrics import classification_report, confusion_matrix
+from sklearn.metrics import classification_report, confusion_matrix, f1_score
 
 
 def detweetify(text):
@@ -48,11 +48,11 @@ batch_size = 64
 test_size = 0.1
 lr = 1e-5
 max_length = 128
-epochs = 5
+epochs = 10
 
 
 def parse_training(file_location: str):
-    tweets = []
+    tweets_training = []
     file = open(file_location, 'r')
     lines = file.readlines()
 
@@ -60,17 +60,23 @@ def parse_training(file_location: str):
         split_line = line.split('\t')
 
         if split_line[2].strip() == 'oth':
-            tweets.append([split_line[0], detweetify(split_line[1]), 4])
+            tweets_training.append([split_line[0], detweetify(split_line[1]), 4])
+            tweets_training.append([split_line[0], detweetify(split_line[1]), 4])
+            tweets_training.append([split_line[0], detweetify(split_line[1]), 4])
+            tweets_training.append([split_line[0], detweetify(split_line[1]), 4])
         elif split_line[2].strip() == 'grp':
-            tweets.append([split_line[0], detweetify(split_line[1]), 3])
+            tweets_training.append([split_line[0], detweetify(split_line[1]), 3])
+            tweets_training.append([split_line[0], detweetify(split_line[1]), 3])
         elif split_line[2].strip() == 'ind':
-            tweets.append([split_line[0], detweetify(split_line[1]), 2])
+            tweets_training.append([split_line[0], detweetify(split_line[1]), 2])
+            tweets_training.append([split_line[0], detweetify(split_line[1]), 2])
         elif split_line[2].strip() == 'prof':
-            tweets.append([split_line[0], detweetify(split_line[1]), 1])
+            tweets_training.append([split_line[0], detweetify(split_line[1]), 1])
+            tweets_training.append([split_line[0], detweetify(split_line[1]), 1])
         else:
-            tweets.append([split_line[0], detweetify(split_line[1]), 0])
+            tweets_training.append([split_line[0], detweetify(split_line[1]), 0])
 
-    return Dataset.from_pandas(pd.DataFrame(tweets, columns=['id', 'tweet', 'labels']))
+    return Dataset.from_pandas(pd.DataFrame(tweets_training, columns=['id', 'tweet', 'labels']))
 
 
 # parses both test key and answer key and combines them for easier evaluation
@@ -122,7 +128,6 @@ def train(training: Dataset):
 
     dataloader = DataLoader(dataset['train'], batch_size=batch_size)
 
-
     print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
     print("|               Training                |")
     print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
@@ -137,9 +142,7 @@ def train(training: Dataset):
             loss.backward()
             optimizer.step()
             model.zero_grad()
-            # optimizer.zero_grad()
 
-        evaluate(dataset['test'])
     return model
 
 
@@ -162,15 +165,14 @@ def evaluate(dataset: Dataset):
         model.zero_grad()
 
     print(classification_report(dataset['labels'], y_preds))
-    print(confusion_matrix(dataset['labels'], y_preds))
+    return f1_score(dataset['labels'], y_preds, average='macro')
 
 
 if __name__ == "__main__":
-    training_set = parse_training('../lib/processed_training.tsv')
-    torch.save(train(training_set).state_dict(), "../model.pt")
+    train(parse_training('../lib/training.tsv'))
+    torch.save(model.state_dict(), "../model.pt")
+
     # model.load_state_dict(torch.load("../model.pt"))
+    evaluate(parse_test_key("../lib/test.tsv", "../lib/labelc.tsv"))
 
-    evaluate(parse_test_key("../lib/processed_test.tsv", "../lib/labelc.tsv"))
-
-    # print(training_set['labels'])
     sys.exit()

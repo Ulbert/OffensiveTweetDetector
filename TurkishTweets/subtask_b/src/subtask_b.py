@@ -1,15 +1,14 @@
 import sys
 
-import json
 import emoji
 from tqdm import tqdm
-from transformers import BertTokenizer, BertForSequenceClassification, AdamW, get_linear_schedule_with_warmup
-from datasets import Dataset, load_dataset, Value, ClassLabel
+from transformers import BertTokenizer, BertForSequenceClassification, AdamW
+from datasets import Dataset
 import pandas as pd
 import torch
 import numpy as np
 from torch.utils.data.dataloader import DataLoader
-from sklearn.metrics import classification_report, confusion_matrix
+from sklearn.metrics import classification_report, f1_score
 
 
 def detweetify(text):
@@ -113,7 +112,6 @@ def train(training: Dataset):
 
     dataloader = DataLoader(dataset['train'], batch_size=batch_size)
 
-
     print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
     print("|               Training                |")
     print("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~")
@@ -128,7 +126,6 @@ def train(training: Dataset):
             loss.backward()
             optimizer.step()
             model.zero_grad()
-            # optimizer.zero_grad()
 
         evaluate(dataset['test'])
     return model
@@ -153,14 +150,13 @@ def evaluate(dataset: Dataset):
         model.zero_grad()
 
     print(classification_report(dataset['labels'], y_preds))
-    print(confusion_matrix(dataset['labels'], y_preds))
+    return f1_score(dataset['labels'], y_preds, average='macro')
 
 if __name__ == "__main__":
-    training_set = parse_training('../lib/processed_training.tsv')
-    torch.save(train(training_set).state_dict(), "../model.pt")
+    train(parse_training('../lib/training.tsv'))
+    torch.save(model.state_dict(), "../model.pt")
+
     # model.load_state_dict(torch.load("../model.pt"))
+    evaluate(parse_test_key("../lib/test.tsv", "../lib/labelb.tsv"))
 
-    evaluate(parse_test_key("../lib/processed_test.tsv", "../lib/labelb.tsv"))
-
-    # print(training_set['labels'])
     sys.exit()

@@ -46,7 +46,7 @@ def detweetify(text):
 device = torch.device('cuda')
 batch_size = 64
 test_size = 0.1
-lr = 1e-5
+lr = 2e-5
 max_length = 128
 epochs = 5
 
@@ -140,13 +140,14 @@ def evaluate(dataset: Dataset):
         y_preds += list(np.argmax(logits.detach().cpu().numpy(), axis=1).flatten())
         model.zero_grad()
 
-    print(classification_report(dataset['labels'], y_preds))
-    print(confusion_matrix(dataset['labels'], y_preds))
+    print(classification_report(dataset['labels'], y_preds, digits=4))
+    return f1_score(dataset['labels'], y_preds, average='macro')
 
 
 if __name__ == "__main__":
     training_set = parse_training('../lib/processed_training.tsv')
     torch.save(train(training_set).state_dict(), "../model.pt")
+
     # model.load_state_dict(torch.load("../model.pt"))
     evaluate(parse_test_key("../lib/processed_test.tsv", "../lib/labela.tsv"))
 
